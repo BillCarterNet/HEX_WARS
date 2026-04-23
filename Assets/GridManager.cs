@@ -15,7 +15,6 @@ public class GridManager : MonoBehaviour
     public Material enemyMaterial;
 
     private Tile currentlySelectedTile;
-
     // This "Dictionary" lets us look up a Tile using a Vector2Int coordinate
     private Dictionary<Vector2Int, Tile> gridDictionary = new Dictionary<Vector2Int, Tile>();
     private List<Tile> highlightedTiles = new List<Tile>();
@@ -28,6 +27,13 @@ public class GridManager : MonoBehaviour
         // 1. MOVE FIRST (critical)
         if (selectedUnit != null && highlightedTiles.Contains(newTile))
         {
+            // 🚫 Block movement if occupied
+            if (newTile.currentUnit != null)
+            {
+                Debug.Log("Tile occupied!");
+                return;
+            }
+
             MoveUnit(selectedUnit, newTile);
             return;
         }
@@ -89,6 +95,12 @@ public class GridManager : MonoBehaviour
         unit.SetTile(targetTile);
 
         Debug.Log($"Moved {unit.unitName} to {targetTile.coordinates}");
+
+        // Reset the old selected tile colour
+        if (currentlySelectedTile != null)
+        {
+            currentlySelectedTile.ResetColor();
+        }
 
         ClearHighlights();
         currentlySelectedTile = null;
@@ -234,6 +246,10 @@ public class GridManager : MonoBehaviour
             );
 
             if (distance > selectedUnit.moveRange)
+                continue;
+
+            // 🚫 Skip occupied tiles
+            if (tile.currentUnit != null)
                 continue;
 
             tile.HighlightMoveRange();
