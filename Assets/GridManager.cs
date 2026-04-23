@@ -11,6 +11,9 @@ public class GridManager : MonoBehaviour
     public GameObject tilePrefab;
     public GameObject assaultPrefab;
     public GameObject sniperPrefab;
+    public Material playerMaterial;
+    public Material enemyMaterial;
+
     private Tile currentlySelectedTile;
 
     // This "Dictionary" lets us look up a Tile using a Vector2Int coordinate
@@ -138,6 +141,18 @@ public class GridManager : MonoBehaviour
                 unitScript.SetManager(this);
                 targetTile.currentUnit = unitScript;
                 unitScript.SetTile(targetTile);
+
+                Renderer r = unitGO.GetComponentInChildren<Renderer>();
+                Debug.Log($"Setting material for {unitName} (Team {team})");
+                Debug.Log(r);
+
+                if (r != null)
+                {
+                    if (team == 0)
+                        r.material = playerMaterial;
+                    else
+                        r.material = enemyMaterial;
+                }
             }
         }
         else
