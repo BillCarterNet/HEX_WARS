@@ -1,7 +1,14 @@
 using UnityEngine;
 
+public enum UnitState
+{
+    Idle,
+    MovePreview,
+    ActionMenu
+}
 public class Unit : MonoBehaviour
 {
+    public UnitState state;
     public string unitName;
     public int teamID; // 0 for Player, 1 for Enemy
     public int moveRange;

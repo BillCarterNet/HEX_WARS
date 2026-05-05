@@ -1,6 +1,12 @@
 using UnityEngine;
 using System.Collections.Generic;
 
+public enum UnitAction
+{
+    Attack,
+    End,
+    Cancel
+}
 public class GridManager : MonoBehaviour
 {
     public int width = 15;
@@ -14,13 +20,6 @@ public class GridManager : MonoBehaviour
     public Material playerMaterial;
     public Material enemyMaterial;
 
-    public enum UnitAction
-    {
-        Attack,
-        End,
-        Cancel
-    }
-
     private Tile currentlySelectedTile;
     // This "Dictionary" lets us look up a Tile using a Vector2Int coordinate
     private Dictionary<Vector2Int, Tile> gridDictionary = new Dictionary<Vector2Int, Tile>();
@@ -30,9 +29,12 @@ public class GridManager : MonoBehaviour
     private Tile originalTile;
     private bool isActionMenuActive = false;
 
+    // =========================
+    // SELECTION SYSTEM
+    // =========================
     public void SelectTile(Tile newTile)
     {
-        Debug.Log($"CLICK: {newTile.coordinates}");
+        Debug.Log($"Selected tile: {newTile.coordinates}");
 
         // 1. MOVE FIRST (critical)
         if (selectedUnit != null && highlightedTiles.Contains(newTile))
@@ -40,23 +42,21 @@ public class GridManager : MonoBehaviour
             // 🚫 Block movement if occupied
             if (newTile.currentUnit != null)
             {
-                Debug.Log("Tile occupied!");
                 return;
             }
 
             MoveUnit(selectedUnit, newTile, true);
-            Debug.Log($"After MoveUnit → hasMoved = {hasMoved}");
             return;
         }
 
         // 2. deselect same tile
-        if (currentlySelectedTile == newTile)
+        if (selectedUnit != null && newTile.currentUnit == selectedUnit)
         {
-            ShowActionMenu(selectedUnit);
-            currentlySelectedTile.ResetColor();
-            currentlySelectedTile = null;
-            selectedUnit = null;
-            ClearHighlights();
+            if (selectedUnit.state == UnitState.MovePreview)
+            {
+                selectedUnit.state = UnitState.ActionMenu;
+                ShowActionMenu(selectedUnit);
+            }
             return;
         }
 
@@ -65,7 +65,6 @@ public class GridManager : MonoBehaviour
         {
             currentlySelectedTile.ResetColor();
         }
-
         ClearHighlights();
 
         // 4. select tile
@@ -75,32 +74,33 @@ public class GridManager : MonoBehaviour
         // 5. unit selection
         if (newTile.currentUnit != null)
         {
-            isActionMenuActive = false;
-            
+            // Store the selected unit and its original tile
             selectedUnit = newTile.currentUnit;
+            selectedUnit.state = UnitState.MovePreview;
             selectedUnit.originalTile = newTile;
-
-            hasMoved = false;
-            originalTile = newTile;
-
+            selectedUnit.hasMoved = false;
             Debug.Log($"Selected unit: {selectedUnit.unitName}");
-
-            HighlightMoveRange(newTile);
+            HighlightMoveRange(newTile, selectedUnit);
         }
     }
 
+    // =========================
+    // MOVEMENT SYSTEM
+    // =========================
     void MoveUnit(Unit unit, Tile targetTile, bool showMenu = true)
     {
-        Debug.Log("MoveUnit CALLED → setting hasMoved = true");
-        unit.hasMoved = true;
-        
+        // Update unit state and hasMoved flag
+        selectedUnit.state = UnitState.ActionMenu;
+        selectedUnit.hasMoved = true;
         Tile oldTile = null;
 
+        // 🚫 Block movement if occupied
         if (unit.transform.parent != null)
         {
             oldTile = unit.transform.parent.GetComponent<Tile>();
         }
 
+        // Clear old tile's reference to the unit
         if (oldTile != null)
         {
             oldTile.currentUnit = null;
@@ -108,11 +108,10 @@ public class GridManager : MonoBehaviour
 
         targetTile.currentUnit = unit;
 
+        // Move the unit GameObject to the new tile
         unit.transform.SetParent(targetTile.transform);
         unit.transform.localPosition = new Vector3(0, 0.5f, 0);
-
         unit.gridPosition = targetTile.coordinates;
-
         unit.SetTile(targetTile);
 
         Debug.Log($"Moved {unit.unitName} to {targetTile.coordinates}");
@@ -122,25 +121,19 @@ public class GridManager : MonoBehaviour
         {
             currentlySelectedTile.ResetColor();
         }
-
         unit.hasMoved = true;
-
         ClearHighlights();
 
+        // Show action menu if we just moved
         if (showMenu)
         {
             ShowActionMenu(selectedUnit);
         }
     }
 
-    void ClearGrid()
-    {
-        for (int i = transform.childCount - 1; i >= 0; i--)
-        {
-            Destroy(transform.GetChild(i).gameObject);
-        }
-    }
-
+    // =========================
+    // UNIT SPAWNING
+    // =========================
     void SpawnInitialUnits()
     {
         // Spawn Player Assault at 0,0
@@ -172,18 +165,22 @@ public class GridManager : MonoBehaviour
             unitGO.transform.localPosition = new Vector3(0, 0.5f, 0);
             unitGO.transform.localRotation = Quaternion.identity;
 
+            // 4. Set up the Unit script
             Unit unitScript = unitGO.GetComponent<Unit>();
             if (unitScript != null)
             {
+                // Initialize the unit with its name, team, move range, and starting position
                 unitScript.Initialize(unitName, team, moveRange, 2, coord);
                 unitScript.SetManager(this);
                 targetTile.currentUnit = unitScript;
                 unitScript.SetTile(targetTile);
 
+                // 5. Set material based on team
                 Renderer r = unitGO.GetComponentInChildren<Renderer>();
                 Debug.Log($"Setting material for {unitName} (Team {team})");
                 Debug.Log(r);
 
+                //
                 if (r != null)
                 {
                     if (team == 0)
@@ -199,6 +196,16 @@ public class GridManager : MonoBehaviour
         }
     }
 
+    // =========================
+    // GRID GENERATION
+    // =========================
+    void ClearGrid()
+    {
+        for (int i = transform.childCount - 1; i >= 0; i--)
+        {
+            Destroy(transform.GetChild(i).gameObject);
+        }
+    }
     public void GenerateGrid()
     {
         ClearGrid();
@@ -221,7 +228,7 @@ public class GridManager : MonoBehaviour
                 Debug.Log($"Calculated centre position for Tile: ({xPos:F2}, {zPos:F2})");
                 Vector3 position = new Vector3(xPos, 0, zPos);
 
-                // Inside your loop in GridManager.cs:
+                // Instantiate the tile prefab at the calculated position
                 GameObject go = Instantiate(tilePrefab, position, Quaternion.identity, transform);
                 Tile t = go.GetComponent<Tile>();
                 if (t != null) 
@@ -234,55 +241,14 @@ public class GridManager : MonoBehaviour
 
         SpawnInitialUnits();
 
+        // Position the camera to see the whole grid
         Camera.main.transform.position = new Vector3(
             width * 0.5f,
             10f,
             -1 *height * 0.5f
         );
-
         Camera.main.transform.rotation = Quaternion.Euler(60f, 0f, 0f); 
     }
-
-    void ClearHighlights()
-    {
-        for (int i = 0; i < highlightedTiles.Count; i++)
-        {
-            highlightedTiles[i].ResetColor();
-        }
-
-        highlightedTiles.Clear();
-    }
-
-    void HighlightMoveRange(Tile origin)
-    {
-        ClearHighlights();
-
-        foreach (var kvp in gridDictionary)
-        {
-            Tile tile = kvp.Value;
-
-            // Convert BOTH tiles to cube coordinates first
-            Vector3Int a = OffsetToCube(origin.coordinates);
-            Vector3Int b = OffsetToCube(tile.coordinates);
-
-            int distance = Mathf.Max(
-                Mathf.Abs(a.x - b.x),
-                Mathf.Abs(a.y - b.y),
-                Mathf.Abs(a.z - b.z)
-            );
-
-            if (distance > selectedUnit.moveRange)
-                continue;
-
-            // 🚫 Skip occupied tiles
-            if (tile.currentUnit != null)
-                continue;
-
-            tile.HighlightMoveRange();
-            highlightedTiles.Add(tile);
-        }
-    }
-
     Vector3Int OffsetToCube(Vector2Int coord)
     {
         int x = coord.x;
@@ -295,20 +261,73 @@ public class GridManager : MonoBehaviour
         return new Vector3Int(cubeX, cubeY, cubeZ);
     }
 
+    // =========================
+    // HIGHLIGHTING SYSTEM
+    // =========================
+    void ClearHighlights()
+    {
+        for (int i = 0; i < highlightedTiles.Count; i++)
+        {
+            highlightedTiles[i].ResetColor();
+        }
+        highlightedTiles.Clear();
+    }
+
+    void HighlightMoveRange(Tile origin, Unit unit)
+    {
+        Debug.Log($"HighlightMoveRange → unit: {unit.unitName}, moveRange: {unit.moveRange}");
+        if (unit == null || origin == null)
+        return;
+
+        ClearHighlights();
+
+        foreach (var kvp in gridDictionary)
+        {
+            Tile tile = kvp.Value;
+
+            // Convert BOTH tiles to cube coordinates first
+            Vector3Int a = OffsetToCube(origin.coordinates);
+            Vector3Int b = OffsetToCube(tile.coordinates);
+
+            // Then calculate distance using the cube coordinates
+            int distance = Mathf.Max(
+                Mathf.Abs(a.x - b.x),
+                Mathf.Abs(a.y - b.y),
+                Mathf.Abs(a.z - b.z)
+            );
+
+            // 🚫 Skip tiles outside of move range
+            if (distance > unit.moveRange)
+                continue;
+
+            // 🚫 Skip occupied tiles
+            if (tile.currentUnit != null)
+                continue;
+
+            // If we made it here, it's in range and unoccupied - highlight it!
+            tile.HighlightMoveRange();
+            highlightedTiles.Add(tile);
+        }
+    }
+
+    // =========================
+    // ACTION MENU
+    // =========================
     void ShowActionMenu(Unit unit)
     {
+        // Activate the action menu state
         isActionMenuActive = true;
         Debug.Log("=== ACTION MENU ===");
         Debug.Log($"hasMoved = {hasMoved}");
 
+        // If no unit is selected, we can't show any actions
         if (unit == null)
         {
-            Debug.Log("No unit selected");
             return;
         }
-
         Debug.Log($"Unit: {unit.unitName}");
 
+        // Show available actions based on whether the unit has moved or not
         if (!unit.hasMoved)
             Debug.Log("Available: Attack, End, Cancel");
         else
@@ -327,28 +346,32 @@ public class GridManager : MonoBehaviour
             currentlySelectedTile.ResetColor();
         }
 
+        // Reset unit state and visuals
         ClearHighlights();
-
         currentlySelectedTile = null;
-        selectedUnit = null;
 
+        // Reset the selected unit's state and hasMoved flag
         if (selectedUnit != null)
         {
             selectedUnit.hasMoved = false;
             selectedUnit.originalTile = null;
         }
+
+        // Clear the selected unit reference
+        selectedUnit = null;
     }
 
     void Update()
     {
+        // If the action menu isn't active, we don't want to process these inputs
         if (!isActionMenuActive) return;
 
+        // Listen for "End Turn" and "Cancel" inputs
         if (Input.GetKeyDown(KeyCode.E))
         {
             Debug.Log("Pressed E → End Turn");
             EndTurn();
         }
-
         if (Input.GetKeyDown(KeyCode.C))
         {
             Debug.Log("Pressed C → Cancel");
@@ -360,25 +383,22 @@ public class GridManager : MonoBehaviour
     {
         Debug.Log("CANCEL");
 
-        isActionMenuActive = false;
-
+        // If no unit is selected, just return
         if (selectedUnit == null)
             return;
 
-        // If we moved → go back
+        // If the unit has already moved, move it back to its original tile
         if (selectedUnit.hasMoved && selectedUnit.originalTile != null)
         {
             MoveUnit(selectedUnit, selectedUnit.originalTile, false);
             selectedUnit.hasMoved = false;
+        }
 
-            // Re-highlight movement from original tile
-            currentlySelectedTile = originalTile;
-            HighlightMoveRange(originalTile);
-        }
-        else
-        {
-            // If no move happened, just end
-            EndTurn();
-        }
+        // Reset unit state and visuals
+        selectedUnit.state = UnitState.Idle;
+        ClearHighlights();
+        isActionMenuActive = false;
+        currentlySelectedTile = null;
+        selectedUnit = null;
     }
 }
