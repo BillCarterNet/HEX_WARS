@@ -14,11 +14,20 @@ public class GridManager : MonoBehaviour
     public Material playerMaterial;
     public Material enemyMaterial;
 
+    public enum UnitAction
+    {
+        Attack,
+        End,
+        Cancel
+    }
+
     private Tile currentlySelectedTile;
     // This "Dictionary" lets us look up a Tile using a Vector2Int coordinate
     private Dictionary<Vector2Int, Tile> gridDictionary = new Dictionary<Vector2Int, Tile>();
     private List<Tile> highlightedTiles = new List<Tile>();
     private Unit selectedUnit;
+    private bool hasMoved = false;
+    private Tile originalTile;
 
     public void SelectTile(Tile newTile)
     {
@@ -34,13 +43,15 @@ public class GridManager : MonoBehaviour
                 return;
             }
 
-            MoveUnit(selectedUnit, newTile);
+            MoveUnit(selectedUnit, newTile, true);
+            Debug.Log($"After MoveUnit → hasMoved = {hasMoved}");
             return;
         }
 
         // 2. deselect same tile
         if (currentlySelectedTile == newTile)
         {
+            ShowActionMenu(selectedUnit);
             currentlySelectedTile.ResetColor();
             currentlySelectedTile = null;
             selectedUnit = null;
@@ -65,14 +76,20 @@ public class GridManager : MonoBehaviour
         {
             selectedUnit = newTile.currentUnit;
 
+            hasMoved = false;
+            originalTile = newTile;
+
             Debug.Log($"Selected unit: {selectedUnit.unitName}");
 
             HighlightMoveRange(newTile);
         }
     }
 
-    void MoveUnit(Unit unit, Tile targetTile)
+    void MoveUnit(Unit unit, Tile targetTile, bool showMenu = true)
     {
+        Debug.Log("MoveUnit CALLED → setting hasMoved = true");
+        hasMoved = true;
+        
         Tile oldTile = null;
 
         if (unit.transform.parent != null)
@@ -102,9 +119,14 @@ public class GridManager : MonoBehaviour
             currentlySelectedTile.ResetColor();
         }
 
+        hasMoved = true;
+
         ClearHighlights();
-        currentlySelectedTile = null;
-        selectedUnit = null;
+
+        if (showMenu)
+        {
+            ShowActionMenu(selectedUnit);
+        }
     }
 
     void ClearGrid()
@@ -267,5 +289,86 @@ public class GridManager : MonoBehaviour
         int cubeY = -cubeX - cubeZ;
 
         return new Vector3Int(cubeX, cubeY, cubeZ);
+    }
+
+    void ShowActionMenu(Unit unit)
+    {
+        Debug.Log("=== ACTION MENU ===");
+        Debug.Log($"hasMoved = {hasMoved}");
+
+        if (unit == null)
+        {
+            Debug.Log("No unit selected");
+            return;
+        }
+
+        Debug.Log($"Unit: {unit.unitName}");
+
+        if (!hasMoved)
+            Debug.Log("Available: Attack, End, Cancel");
+        else
+            Debug.Log("Available: End, Cancel");
+    }
+
+    void EndTurn()
+    {
+        Debug.Log("END TURN");
+
+        // Reset the currently selected tile's color
+        if (currentlySelectedTile != null)
+        {
+            currentlySelectedTile.ResetColor();
+        }
+
+        ClearHighlights();
+
+        currentlySelectedTile = null;
+        selectedUnit = null;
+
+        hasMoved = false;
+        originalTile = null;
+    }
+
+    void Update()
+    {
+        if (selectedUnit == null) return;
+
+        if (Input.GetKeyDown(KeyCode.E))
+        {
+            Debug.Log("Pressed E → End Turn");
+            EndTurn();
+        }
+
+        if (Input.GetKeyDown(KeyCode.C))
+        {
+            Debug.Log("Pressed C → Cancel");
+            CancelAction();
+        }
+    }
+
+    void CancelAction()
+    {
+        Debug.Log("CANCEL");
+
+        if (selectedUnit == null)
+            return;
+
+        // If we moved → go back
+        if (hasMoved && originalTile != null)
+        {
+            MoveUnit(selectedUnit, originalTile, false);
+
+            // IMPORTANT: undo the move state
+            hasMoved = false;
+
+            // Re-highlight movement from original tile
+            currentlySelectedTile = originalTile;
+            HighlightMoveRange(originalTile);
+        }
+        else
+        {
+            // If no move happened, just end
+            EndTurn();
+        }
     }
 }
