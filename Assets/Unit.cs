@@ -7,7 +7,8 @@ public class Unit : MonoBehaviour
     public int moveRange;
     public int attackRange;
     public Vector2Int gridPosition;
-    
+    public bool hasMoved;
+    public Tile originalTile;
     private Tile currentTile;
     private GridManager manager;
 

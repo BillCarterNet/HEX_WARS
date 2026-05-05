@@ -25,7 +25,21 @@ public class Tile : MonoBehaviour
         manager.SelectTile(this);
     }
 
-    public void Highlight() => rend.material.color = Color.yellow;
-    public void HighlightMoveRange() => rend.material.color = Color.green;
-    public void ResetColor() => rend.material.color = originalColor;
+    public void ResetColor()
+    {
+        if (rend != null)
+            rend.material.color = originalColor;
+    }
+
+    public void Highlight()
+    {
+        if (rend != null)
+            rend.material.color = Color.yellow;
+    }
+
+    public void HighlightMoveRange()
+    {
+        if (rend != null)
+            rend.material.color = Color.green;
+    }
 }

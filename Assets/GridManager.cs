@@ -28,6 +28,7 @@ public class GridManager : MonoBehaviour
     private Unit selectedUnit;
     private bool hasMoved = false;
     private Tile originalTile;
+    private bool isActionMenuActive = false;
 
     public void SelectTile(Tile newTile)
     {
@@ -74,7 +75,10 @@ public class GridManager : MonoBehaviour
         // 5. unit selection
         if (newTile.currentUnit != null)
         {
+            isActionMenuActive = false;
+            
             selectedUnit = newTile.currentUnit;
+            selectedUnit.originalTile = newTile;
 
             hasMoved = false;
             originalTile = newTile;
@@ -88,7 +92,7 @@ public class GridManager : MonoBehaviour
     void MoveUnit(Unit unit, Tile targetTile, bool showMenu = true)
     {
         Debug.Log("MoveUnit CALLED → setting hasMoved = true");
-        hasMoved = true;
+        unit.hasMoved = true;
         
         Tile oldTile = null;
 
@@ -119,7 +123,7 @@ public class GridManager : MonoBehaviour
             currentlySelectedTile.ResetColor();
         }
 
-        hasMoved = true;
+        unit.hasMoved = true;
 
         ClearHighlights();
 
@@ -293,6 +297,7 @@ public class GridManager : MonoBehaviour
 
     void ShowActionMenu(Unit unit)
     {
+        isActionMenuActive = true;
         Debug.Log("=== ACTION MENU ===");
         Debug.Log($"hasMoved = {hasMoved}");
 
@@ -304,7 +309,7 @@ public class GridManager : MonoBehaviour
 
         Debug.Log($"Unit: {unit.unitName}");
 
-        if (!hasMoved)
+        if (!unit.hasMoved)
             Debug.Log("Available: Attack, End, Cancel");
         else
             Debug.Log("Available: End, Cancel");
@@ -313,6 +318,8 @@ public class GridManager : MonoBehaviour
     void EndTurn()
     {
         Debug.Log("END TURN");
+
+        isActionMenuActive = false;
 
         // Reset the currently selected tile's color
         if (currentlySelectedTile != null)
@@ -325,13 +332,16 @@ public class GridManager : MonoBehaviour
         currentlySelectedTile = null;
         selectedUnit = null;
 
-        hasMoved = false;
-        originalTile = null;
+        if (selectedUnit != null)
+        {
+            selectedUnit.hasMoved = false;
+            selectedUnit.originalTile = null;
+        }
     }
 
     void Update()
     {
-        if (selectedUnit == null) return;
+        if (!isActionMenuActive) return;
 
         if (Input.GetKeyDown(KeyCode.E))
         {
@@ -350,16 +360,16 @@ public class GridManager : MonoBehaviour
     {
         Debug.Log("CANCEL");
 
+        isActionMenuActive = false;
+
         if (selectedUnit == null)
             return;
 
         // If we moved → go back
-        if (hasMoved && originalTile != null)
+        if (selectedUnit.hasMoved && selectedUnit.originalTile != null)
         {
-            MoveUnit(selectedUnit, originalTile, false);
-
-            // IMPORTANT: undo the move state
-            hasMoved = false;
+            MoveUnit(selectedUnit, selectedUnit.originalTile, false);
+            selectedUnit.hasMoved = false;
 
             // Re-highlight movement from original tile
             currentlySelectedTile = originalTile;
