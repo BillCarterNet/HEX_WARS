@@ -9,6 +9,7 @@ public enum UnitAction
 }
 public class GridManager : MonoBehaviour
 {
+    public SelectionController selection;
     public int width = 15;
     public int height = 15;
     public float tileSpacing = 1.2f;
@@ -19,68 +20,86 @@ public class GridManager : MonoBehaviour
     public GameObject sniperPrefab;
     public Material playerMaterial;
     public Material enemyMaterial;
-
-    private Tile currentlySelectedTile;
     // This "Dictionary" lets us look up a Tile using a Vector2Int coordinate
     private Dictionary<Vector2Int, Tile> gridDictionary = new Dictionary<Vector2Int, Tile>();
     private List<Tile> highlightedTiles = new List<Tile>();
-    private Unit selectedUnit;
-    private bool hasMoved = false;
-    private Tile originalTile;
     private bool isActionMenuActive = false;
 
     // =========================
     // SELECTION SYSTEM
     // =========================
+    void Awake()
+    {
+        selection = GetComponent<SelectionController>();
+    }
     public void SelectTile(Tile newTile)
     {
+        if (selection == null)
+        {
+            Debug.LogError("SelectionController is NULL");
+            return;
+        }
         Debug.Log($"Selected tile: {newTile.coordinates}");
 
-        // 1. MOVE FIRST (critical)
-        if (selectedUnit != null && highlightedTiles.Contains(newTile))
-        {
-            // 🚫 Block movement if occupied
-            if (newTile.currentUnit != null)
-            {
-                return;
-            }
+        var unit = selection.SelectedUnit;
 
-            MoveUnit(selectedUnit, newTile, true);
+        // 1. MOVE FIRST
+        if (unit != null && highlightedTiles.Contains(newTile))
+        {
+            if (newTile.currentUnit != null)
+                return;
+
+            MoveUnit(unit, newTile, true);
+            return;
+        }
+        else if (selection.SelectedUnit != null && isActionMenuActive)
+        {
+            Debug.Log("Invalid click during action → cancelling");
+
+            CancelAction();
             return;
         }
 
-        // 2. deselect same tile
-        if (selectedUnit != null && newTile.currentUnit == selectedUnit)
+        // 2. clicking same unit → open menu
+        if (unit != null && newTile.currentUnit == unit)
         {
-            if (selectedUnit.state == UnitState.MovePreview)
+            if (unit.state == UnitState.MovePreview)
             {
-                selectedUnit.state = UnitState.ActionMenu;
-                ShowActionMenu(selectedUnit);
+                unit.state = UnitState.ActionMenu;
+                ShowActionMenu(unit);
             }
             return;
         }
 
         // 3. reset visuals
-        if (currentlySelectedTile != null)
+        if (selection.SelectedTile != null)
         {
-            currentlySelectedTile.ResetColor();
+            selection.SelectedTile.ResetColor();
         }
+
         ClearHighlights();
 
-        // 4. select tile
-        currentlySelectedTile = newTile;
-        currentlySelectedTile.Highlight();
+        // 4. select tile ONLY
+        selection.Select(null, newTile);
+        if (selection.SelectedTile != null)
+        {
+            selection.SelectedTile.Highlight();
+        }
 
         // 5. unit selection
         if (newTile.currentUnit != null)
         {
-            // Store the selected unit and its original tile
-            selectedUnit = newTile.currentUnit;
-            selectedUnit.state = UnitState.MovePreview;
-            selectedUnit.originalTile = newTile;
-            selectedUnit.hasMoved = false;
-            Debug.Log($"Selected unit: {selectedUnit.unitName}");
-            HighlightMoveRange(newTile, selectedUnit);
+            var selected = newTile.currentUnit;
+
+            selection.Select(selected, newTile);
+
+            selected.state = UnitState.MovePreview;
+            selected.originalTile = newTile;
+            selected.hasMoved = false;
+
+            Debug.Log($"Selected unit: {selected.unitName}");
+
+            HighlightMoveRange(newTile, selected);
         }
     }
 
@@ -89,9 +108,10 @@ public class GridManager : MonoBehaviour
     // =========================
     void MoveUnit(Unit unit, Tile targetTile, bool showMenu = true)
     {
+        //Debug.Log($"MoveUnit | unit={unit} | targetTile={targetTile} | selection={(selection!=null)} | selUnit={selection?.SelectedUnit} | selTile={selection?.SelectedTile}"); 
         // Update unit state and hasMoved flag
-        selectedUnit.state = UnitState.ActionMenu;
-        selectedUnit.hasMoved = true;
+        unit.state = UnitState.ActionMenu;
+        unit.hasMoved = true;
         Tile oldTile = null;
 
         // 🚫 Block movement if occupied
@@ -117,9 +137,9 @@ public class GridManager : MonoBehaviour
         Debug.Log($"Moved {unit.unitName} to {targetTile.coordinates}");
 
         // Reset the old selected tile colour
-        if (currentlySelectedTile != null)
+        if (selection.SelectedTile != null)
         {
-            currentlySelectedTile.ResetColor();
+            selection.SelectedTile.ResetColor();
         }
         unit.hasMoved = true;
         ClearHighlights();
@@ -127,7 +147,7 @@ public class GridManager : MonoBehaviour
         // Show action menu if we just moved
         if (showMenu)
         {
-            ShowActionMenu(selectedUnit);
+            ShowActionMenu(unit);
         }
     }
 
@@ -318,7 +338,7 @@ public class GridManager : MonoBehaviour
         // Activate the action menu state
         isActionMenuActive = true;
         Debug.Log("=== ACTION MENU ===");
-        Debug.Log($"hasMoved = {hasMoved}");
+        Debug.Log($"hasMoved = {unit.hasMoved}");
 
         // If no unit is selected, we can't show any actions
         if (unit == null)
@@ -340,25 +360,18 @@ public class GridManager : MonoBehaviour
 
         isActionMenuActive = false;
 
-        // Reset the currently selected tile's color
-        if (currentlySelectedTile != null)
-        {
-            currentlySelectedTile.ResetColor();
-        }
-
-        // Reset unit state and visuals
         ClearHighlights();
-        currentlySelectedTile = null;
 
-        // Reset the selected unit's state and hasMoved flag
-        if (selectedUnit != null)
+        var unit = selection.SelectedUnit;
+
+        if (unit != null)
         {
-            selectedUnit.hasMoved = false;
-            selectedUnit.originalTile = null;
+            unit.hasMoved = false;
+            unit.originalTile = null;
+            unit.state = UnitState.Idle;
         }
 
-        // Clear the selected unit reference
-        selectedUnit = null;
+        selection.Select(null, null);
     }
 
     void Update()
@@ -383,22 +396,22 @@ public class GridManager : MonoBehaviour
     {
         Debug.Log("CANCEL");
 
-        // If no unit is selected, just return
-        if (selectedUnit == null)
+        var unit = selection.SelectedUnit;
+
+        if (unit == null)
             return;
 
-        // If the unit has already moved, move it back to its original tile
-        if (selectedUnit.hasMoved && selectedUnit.originalTile != null)
+        if (unit.hasMoved && unit.originalTile != null)
         {
-            MoveUnit(selectedUnit, selectedUnit.originalTile, false);
-            selectedUnit.hasMoved = false;
+            MoveUnit(unit, unit.originalTile, false);
+            unit.hasMoved = false;
         }
 
-        // Reset unit state and visuals
-        selectedUnit.state = UnitState.Idle;
+        unit.state = UnitState.Idle;
+
         ClearHighlights();
         isActionMenuActive = false;
-        currentlySelectedTile = null;
-        selectedUnit = null;
+
+        selection.Select(null, null);
     }
 }
