@@ -7,19 +7,28 @@ public enum UnitAction
     End,
     Cancel
 }
+
+// GridManager responsibilities:
+// - Grid generation
+// - Unit movement
+// - Tile highlighting
+// - Unit spawning
+//
+// Selection state is owned by SelectionController.
+
 public class GridManager : MonoBehaviour
 {
-    public SelectionController selection;
     public int width = 15;
     public int height = 15;
-    public float tileSpacing = 1.2f;
     public float hexSize = 0.75f;
-    public int moveRange = 2;
+
+    public SelectionController selection;
     public GameObject tilePrefab;
     public GameObject assaultPrefab;
     public GameObject sniperPrefab;
     public Material playerMaterial;
     public Material enemyMaterial;
+
     // This "Dictionary" lets us look up a Tile using a Vector2Int coordinate
     private Dictionary<Vector2Int, Tile> gridDictionary = new Dictionary<Vector2Int, Tile>();
     private List<Tile> highlightedTiles = new List<Tile>();
@@ -28,12 +37,15 @@ public class GridManager : MonoBehaviour
     // =========================
     // SELECTION SYSTEM
     // =========================
+
     void Awake()
     {
         selection = GetComponent<SelectionController>();
     }
+
     public void SelectTile(Tile newTile)
     {
+        // 🚫 If we don't have a reference to the SelectionController, we can't do anything!
         if (selection == null)
         {
             Debug.LogError("SelectionController is NULL");
@@ -41,6 +53,7 @@ public class GridManager : MonoBehaviour
         }
         Debug.Log($"Selected tile: {newTile.coordinates}");
 
+        // Cache the currently selected unit for easy access
         var unit = selection.SelectedUnit;
 
         // 1. MOVE FIRST
@@ -106,15 +119,13 @@ public class GridManager : MonoBehaviour
     // =========================
     // MOVEMENT SYSTEM
     // =========================
+
     void MoveUnit(Unit unit, Tile targetTile, bool showMenu = true)
     {
-        //Debug.Log($"MoveUnit | unit={unit} | targetTile={targetTile} | selection={(selection!=null)} | selUnit={selection?.SelectedUnit} | selTile={selection?.SelectedTile}"); 
         // Update unit state and hasMoved flag
         unit.state = UnitState.ActionMenu;
-        unit.hasMoved = true;
         Tile oldTile = null;
 
-        // 🚫 Block movement if occupied
         if (unit.transform.parent != null)
         {
             oldTile = unit.transform.parent.GetComponent<Tile>();
@@ -154,6 +165,7 @@ public class GridManager : MonoBehaviour
     // =========================
     // UNIT SPAWNING
     // =========================
+
     void SpawnInitialUnits()
     {
         // Spawn Player Assault at 0,0
@@ -200,7 +212,7 @@ public class GridManager : MonoBehaviour
                 Debug.Log($"Setting material for {unitName} (Team {team})");
                 Debug.Log(r);
 
-                //
+                // Set the material based on the unit's team
                 if (r != null)
                 {
                     if (team == 0)
@@ -219,6 +231,7 @@ public class GridManager : MonoBehaviour
     // =========================
     // GRID GENERATION
     // =========================
+
     void ClearGrid()
     {
         for (int i = transform.childCount - 1; i >= 0; i--)
@@ -226,6 +239,7 @@ public class GridManager : MonoBehaviour
             Destroy(transform.GetChild(i).gameObject);
         }
     }
+
     public void GenerateGrid()
     {
         ClearGrid();
@@ -269,6 +283,7 @@ public class GridManager : MonoBehaviour
         );
         Camera.main.transform.rotation = Quaternion.Euler(60f, 0f, 0f); 
     }
+
     Vector3Int OffsetToCube(Vector2Int coord)
     {
         int x = coord.x;
@@ -284,6 +299,7 @@ public class GridManager : MonoBehaviour
     // =========================
     // HIGHLIGHTING SYSTEM
     // =========================
+
     void ClearHighlights()
     {
         for (int i = 0; i < highlightedTiles.Count; i++)
@@ -333,6 +349,7 @@ public class GridManager : MonoBehaviour
     // =========================
     // ACTION MENU
     // =========================
+
     void ShowActionMenu(Unit unit)
     {
         // Activate the action menu state
