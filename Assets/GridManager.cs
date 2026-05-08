@@ -23,6 +23,8 @@ public class GridManager : MonoBehaviour
     public float hexSize = 0.75f;
 
     public SelectionController selection;
+    public HighlightController highlights;
+    
     public GameObject tilePrefab;
     public GameObject assaultPrefab;
     public GameObject sniperPrefab;
@@ -31,7 +33,6 @@ public class GridManager : MonoBehaviour
 
     // This "Dictionary" lets us look up a Tile using a Vector2Int coordinate
     private Dictionary<Vector2Int, Tile> gridDictionary = new Dictionary<Vector2Int, Tile>();
-    private List<Tile> highlightedTiles = new List<Tile>();
     private bool isActionMenuActive = false;
 
     // =========================
@@ -41,6 +42,7 @@ public class GridManager : MonoBehaviour
     void Awake()
     {
         selection = GetComponent<SelectionController>();
+        highlights = GetComponent<HighlightController>();
     }
 
     public void SelectTile(Tile newTile)
@@ -57,7 +59,7 @@ public class GridManager : MonoBehaviour
         var unit = selection.SelectedUnit;
 
         // 1. MOVE FIRST
-        if (unit != null && highlightedTiles.Contains(newTile))
+        if (unit != null && highlights.IsHighlighted(newTile))
         {
             if (newTile.currentUnit != null)
                 return;
@@ -90,7 +92,7 @@ public class GridManager : MonoBehaviour
             selection.SelectedTile.ResetColor();
         }
 
-        ClearHighlights();
+        highlights.ClearHighlights();
 
         // 4. select tile ONLY
         selection.Select(null, newTile);
@@ -112,7 +114,7 @@ public class GridManager : MonoBehaviour
 
             Debug.Log($"Selected unit: {selected.unitName}");
 
-            HighlightMoveRange(newTile, selected);
+            highlights.HighlightMoveRange(gridDictionary, newTile, selected);
         }
     }
 
@@ -153,7 +155,7 @@ public class GridManager : MonoBehaviour
             selection.SelectedTile.ResetColor();
         }
         unit.hasMoved = true;
-        ClearHighlights();
+        highlights.ClearHighlights();
 
         // Show action menu if we just moved
         if (showMenu)
@@ -297,56 +299,6 @@ public class GridManager : MonoBehaviour
     }
 
     // =========================
-    // HIGHLIGHTING SYSTEM
-    // =========================
-
-    void ClearHighlights()
-    {
-        for (int i = 0; i < highlightedTiles.Count; i++)
-        {
-            highlightedTiles[i].ResetColor();
-        }
-        highlightedTiles.Clear();
-    }
-
-    void HighlightMoveRange(Tile origin, Unit unit)
-    {
-        Debug.Log($"HighlightMoveRange → unit: {unit.unitName}, moveRange: {unit.moveRange}");
-        if (unit == null || origin == null)
-        return;
-
-        ClearHighlights();
-
-        foreach (var kvp in gridDictionary)
-        {
-            Tile tile = kvp.Value;
-
-            // Convert BOTH tiles to cube coordinates first
-            Vector3Int a = OffsetToCube(origin.coordinates);
-            Vector3Int b = OffsetToCube(tile.coordinates);
-
-            // Then calculate distance using the cube coordinates
-            int distance = Mathf.Max(
-                Mathf.Abs(a.x - b.x),
-                Mathf.Abs(a.y - b.y),
-                Mathf.Abs(a.z - b.z)
-            );
-
-            // 🚫 Skip tiles outside of move range
-            if (distance > unit.moveRange)
-                continue;
-
-            // 🚫 Skip occupied tiles
-            if (tile.currentUnit != null)
-                continue;
-
-            // If we made it here, it's in range and unoccupied - highlight it!
-            tile.HighlightMoveRange();
-            highlightedTiles.Add(tile);
-        }
-    }
-
-    // =========================
     // ACTION MENU
     // =========================
 
@@ -377,7 +329,7 @@ public class GridManager : MonoBehaviour
 
         isActionMenuActive = false;
 
-        ClearHighlights();
+        highlights.ClearHighlights();
 
         var unit = selection.SelectedUnit;
 
@@ -426,7 +378,7 @@ public class GridManager : MonoBehaviour
 
         unit.state = UnitState.Idle;
 
-        ClearHighlights();
+        highlights.ClearHighlights();
         isActionMenuActive = false;
 
         selection.Select(null, null);
